@@ -2,7 +2,6 @@
     let { stream, dataChannel } = $props(); 
     let videoElement;
     
-    // Keep track of which pointers are actually pressed down
     let activePointers = new Set();
 
     function throttle(func, limit) {
@@ -25,11 +24,7 @@
     }
 
     const sendGesture = (type, e) => {
-        // Validation: 
-        // 1. Connection check
         if (!dataChannel || dataChannel.readyState !== 'open' || !videoElement) return;
-        
-        // 2. State check: Only send "move" if the pointer is currently down
         if (type === "move" && !activePointers.has(e.pointerId)) return;
 
         const rect = videoElement.getBoundingClientRect();
@@ -64,7 +59,7 @@
         muted 
         id="remoteVideo"
         onpointerdown={(e) => {
-            activePointers.add(e.pointerId); // Mark pointer as active
+            activePointers.add(e.pointerId);
             videoElement.setPointerCapture(e.pointerId);
             sendGesture("down", e);
         }}
@@ -72,12 +67,12 @@
         onpointerup={(e) => {
             sendGesture("up", e);
             videoElement.releasePointerCapture(e.pointerId);
-            activePointers.delete(e.pointerId); // Remove from active
+            activePointers.delete(e.pointerId);
         }}
         onpointercancel={(e) => {
             sendGesture("up", e);
             videoElement.releasePointerCapture(e.pointerId);
-            activePointers.delete(e.pointerId); // Remove from active
+            activePointers.delete(e.pointerId);
         }}
     ></video>
 </div>

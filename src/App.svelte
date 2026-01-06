@@ -1,13 +1,11 @@
 <script>
 	import { onMount } from 'svelte';
 	import Stream from './components/Stream.svelte';
-	import StatusPill from './components/Status.svelte';
 
 	// Reactive State
 	let remoteStream = $state(null);
 	let connectionState = $state('new');
-	let socketOpen = $state(false);
-	let messages = $state([]);
+	let isPlaying = $state(true); 
 
 	let pc = new RTCPeerConnection({
 		iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -16,23 +14,16 @@
 	let socket = null;
 
 	onMount(async () => {
+		connectionState = 'connecting';
 		try {
-			// 1. Dynamically import the address from your Ktor endpoint
-			// The @vite-ignore comment prevents build-time errors
-			//const module = await import(/* @vite-ignore */ './address.js');
-			
-			// For now, commenting the dynamic address
-			//const webSocketAddress = module.webSocketAddress;
-			
-			const webSocketAddress = 'ws://192.168.1.13:8080/signal';
+			/**
+			 * Ktor logic: 
+			 * Ktor will perform a .replace("WS_URL_PLACEHOLDER", "ws://$ip:8080/signal")
+			 * on the index.html string before responding to the GET request.
+			 */
+			const webSocketAddress = 'WS_URL_PLACEHOLDER';
 
-			// 2. Initialize WebSocket inside onMount
 			socket = new WebSocket(webSocketAddress);
-
-			socket.onopen = () => {
-				socketOpen = true;
-			};
-
 			socket.onmessage = async (event) => {
 				const data = JSON.parse(event.data);
 				if (data.type === 'offer') {
@@ -49,7 +40,8 @@
 				}
 			};
 		} catch (err) {
-			console.error("Could not load dynamic address.js:", err);
+			connectionState = 'failed';
+			console.error("Could not initialize connection:", err);
 		}
 	});
 
@@ -65,34 +57,129 @@
 
 	pc.ondatachannel = (event) => {
 		dataChannel = event.channel;
-		dataChannel.onmessage = (e) => {
-			messages = [...messages, e.data];
-		};
+		if (dataChannel.readyState === 'open') {
+			sendState(isPlaying);
+		}
 	};
 
-	function sendMessage(msg) {
+	function toggleState() {
+		isPlaying = !isPlaying;
+		sendState(isPlaying);
+	}
+
+	function sendState(state) {
 		if (dataChannel?.readyState === 'open') {
-			dataChannel.send(msg);
+			dataChannel.send(JSON.stringify({ 
+				type: 'liveChange', 
+				value: state 
+			}));
 		}
 	}
 </script>
 
 <main>
-	<Stream stream={remoteStream} dataChannel={dataChannel} />
-	<StatusPill {connectionState} {socketOpen} />
+	{#if connectionState !== 'connected'}
+		<div class="loader">
+			<div class="spinner"></div>
+			<p>Connecting...</p>
+		</div>
+	{:else}
+		<div class="phone-container">
+			<Stream stream={remoteStream} {dataChannel} />
+
+			<button 
+				class="ios-fab" 
+				onclick={toggleState} 
+				aria-label={isPlaying ? 'Stop' : 'Play'}
+			>
+				{#if isPlaying}
+					<svg viewBox="0 0 24 24" width="20" height="20">
+						<rect x="6" y="6" width="12" height="12" fill="currentColor" rx="1.5" />
+					</svg>
+				{:else}
+					<svg viewBox="0 0 24 24" width="20" height="20">
+						<path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
+					</svg>
+				{/if}
+			</button>
+		</div>
+	{/if}
 </main>
 
 <style>
 	:global(body) {
 		background-color: #0f0f0f;
-		color: white;
 		margin: 0;
+		color: white;
+		font-family: -apple-system, system-ui, sans-serif;
 	}
+
 	main {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		min-height: 100vh;
+		width: 100vw;
+	}
+
+	.loader { 
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		min-height: 100vh;
+		text-align: center; 
+		width: 100%;
+	}
+
+	.spinner {
+		width: 28px; height: 28px;
+		border: 2px solid #222;
+		border-top-color: #007AFF;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+		margin-bottom: 15px;
+	}
+	
+	@keyframes spin { to { transform: rotate(360deg); } }
+
+	.phone-container {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.ios-fab {
+		position: absolute;
+		right: 12px; 
+		top: 50%;
+		transform: translateY(-50%);
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+		border: none;
+		background-color: #007AFF;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		z-index: 100;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+		transition: transform 0.1s ease, background-color 0.2s;
+		
+		/* Remove focus ring and tap highlight */
+		outline: none;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.ios-fab:active {
+		transform: translateY(-50%) scale(0.92);
+		background-color: #0063d1;
+	}
+
+	svg {
+		display: block;
 	}
 </style>
