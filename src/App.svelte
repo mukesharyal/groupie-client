@@ -13,14 +13,22 @@
 	let dataChannel = $state(null);
 	let socket = null;
 
+	/**
+	 * Unified function to send messages over DataChannel
+	 * Matches the logic used in Stream.svelte
+	 */
+	const sendAction = (type, value) => {
+		if (!dataChannel || dataChannel.readyState !== 'open') return;
+
+		dataChannel.send(JSON.stringify({
+			type,
+			value
+		}));
+	};
+
 	onMount(async () => {
 		connectionState = 'connecting';
 		try {
-			/**
-			 * Ktor logic: 
-			 * Ktor will perform a .replace("WS_URL_PLACEHOLDER", "ws://$ip:8080/signal")
-			 * on the index.html string before responding to the GET request.
-			 */
 			const webSocketAddress = 'WS_URL_PLACEHOLDER';
 
 			socket = new WebSocket(webSocketAddress);
@@ -57,23 +65,16 @@
 
 	pc.ondatachannel = (event) => {
 		dataChannel = event.channel;
-		if (dataChannel.readyState === 'open') {
-			sendState(isPlaying);
-		}
+		
+		// Synchronize state immediately upon opening
+		dataChannel.onopen = () => {
+			sendAction('liveChange', isPlaying);
+		};
 	};
 
 	function toggleState() {
 		isPlaying = !isPlaying;
-		sendState(isPlaying);
-	}
-
-	function sendState(state) {
-		if (dataChannel?.readyState === 'open') {
-			dataChannel.send(JSON.stringify({ 
-				type: 'liveChange', 
-				value: state 
-			}));
-		}
+		sendAction('liveChange', isPlaying);
 	}
 </script>
 
@@ -168,8 +169,6 @@
 		z-index: 100;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 		transition: transform 0.1s ease, background-color 0.2s;
-		
-		/* Remove focus ring and tap highlight */
 		outline: none;
 		-webkit-tap-highlight-color: transparent;
 	}
